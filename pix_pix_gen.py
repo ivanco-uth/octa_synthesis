@@ -29,7 +29,7 @@ from IPython import display
 from skimage.io import imread, imsave
 from get_quality_cases import get_quality_cases_list
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 gpus = tf.config.experimental.list_physical_devices('GPU')
 
 tf.config.experimental.set_memory_growth(gpus[0] , True)
@@ -61,6 +61,7 @@ def map_func(in_fundus, in_oct):
 
 
 def generator_loss(disc_generated_output, gen_output, target, loss_object, LAMBDA):
+
   gan_loss = loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
   # mean absolute error
@@ -270,7 +271,7 @@ def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_siz
 
   # rec_img = rec_img[0, ...]
 
-  disc_sample_x = disc_sample_x[0:shape_fundus_x, 0:shape_fundus_y]
+  disc_sample_x = disc_sample_x[0:shape_fundus_x, 0:shape_fundus_y, :]
   disc_sample_y = disc_sample_y[0:shape_fundus_x, 0:shape_fundus_y]
 
   rec_img = rec_img[0:shape_fundus_x, 0:shape_fundus_y]
@@ -331,6 +332,10 @@ def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_siz
   # prediction = model(test_input, training=True)
 
 
+# def image_generator():
+
+
+
 def main():
 
     train_chk = True
@@ -341,7 +346,7 @@ def main():
     patch_dim = (512, 512)
     random_state_patches, num_patches = 15, 10
     fundus_channels, oct_channels = 3, 1
-    batch_size = 32
+    batch_size = 16
 
     train_set = list(range(1, 31)) 
     test_set = list(range(51, 53))
@@ -351,6 +356,10 @@ def main():
     file_path_xlx = "NASAStroke_DATA_2021-09-02_1416.xlsx"
 
     q_case_list = get_quality_cases_list(path_to_file=file_path_xlx, lowest_quality="0", case_range=all_sets)
+
+    print(q_case_list)
+
+    
 
 
     LAMBDA = 100
@@ -479,6 +488,9 @@ def main():
       img_case = "60"
 
       loss_check = 1000
+
+
+      # sys.exit()
 
       
 
