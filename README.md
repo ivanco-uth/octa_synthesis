@@ -2,6 +2,7 @@
 
 This repository provides an implementation for generating synthetic Optical Coherence Tomography Angiography (OCTA) images from retinal fundus images using a conditional GAN (Generative Adversarial Network) approach. The project leverages a pix2pix GAN architecture for translating input fundus images into synthetic OCTA images, designed to enhance data availability in medical imaging and research. This methodology aligns with the study conducted in *Scientific Reports* detailing OCTA synthesis through deep learning approaches: [Synthetic generation of OCT-A images using conditional GANs](https://www.nature.com/articles/s41598-023-42062-9).
 
+Data can be accesed at (https://zenodo.org/records/6476639)
 ---
 
 ## Project Structure
@@ -9,7 +10,7 @@ This repository provides an implementation for generating synthetic Optical Cohe
 ### Key Components
 
 1. **Data Preprocessing and Loading**
-   - **`dataset_load_mod.py`** and **`data_slice.py`** handle image loading, preprocessing, and patch extraction. The project splits images into smaller patches to facilitate training and final image reconstruction.
+   - **`dataset_load_mod.py`** handles image loading, preprocessing, and patch extraction. The project splits images into smaller patches to facilitate training and final image reconstruction.
    
 2. **Model Architecture**
    - **Generator** (`pix_generator.py`): This module contains a U-Net style encoder-decoder network with skip connections to retain spatial information.
