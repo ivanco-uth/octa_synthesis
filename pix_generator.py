@@ -1,47 +1,121 @@
 import os
 import tensorflow as tf
 
-# downsampling module using convolutions
+
+
 def downsample(filters, size, apply_batchnorm=True):
+  
+  """
+  Defines a downsampling layer for a U-Net or similar architecture.
+
+  This function creates a sequential downsampling block with a convolutional 
+  layer followed optionally by batch normalization and a Leaky ReLU activation. 
+  Downsampling reduces the spatial dimensions while increasing the depth of 
+  feature maps, aiding in feature extraction.
+
+  Args:
+      filters (int): Number of filters in the convolutional layer.
+      size (int): Size of the convolutional kernel.
+      apply_batchnorm (bool): Whether to include batch normalization after 
+                              the convolutional layer (default: True).
+
+  Returns:
+      tf.keras.Sequential: A downsampling layer as a sequential model.
+  """
+
   
   #kernel initializer
   initializer = tf.random_normal_initializer(0., 0.02)
 
-
+  # convolutional layer definition
   result = tf.keras.Sequential()
+
+  # adds convolutional layer to the model
   result.add(
       tf.keras.layers.Conv2D(filters, size, strides=2, padding='same',
                              kernel_initializer=initializer, use_bias=False))
 
+  # adds batch normalization layer to the model
   if apply_batchnorm:
     result.add(tf.keras.layers.BatchNormalization())
 
+  # adds leaky relu activation layer to the model
   result.add(tf.keras.layers.LeakyReLU())
 
   return result
 
 
+
 def upsample(filters, size, apply_dropout=False):
+
+  """
+  Defines an upsampling layer for a U-Net or similar architecture.
+
+  This function creates a sequential upsampling block with a transposed 
+  convolutional layer followed by batch normalization and a ReLU activation. 
+  Optionally, dropout can be applied. Upsampling increases the spatial 
+  dimensions while reducing the depth of feature maps, aiding in image 
+  reconstruction.
+
+  Args:
+      filters (int): Number of filters in the transposed convolutional layer.
+      size (int): Size of the transposed convolutional kernel.
+      apply_dropout (bool): Whether to include a dropout layer after batch 
+                            normalization (default: False).
+
+  Returns:
+      tf.keras.Sequential: An upsampling layer as a sequential model.
+  """
+
+
+  # initializes kernel to random normal distribution
   initializer = tf.random_normal_initializer(0., 0.02)
 
+  # convolutional layer definition
   result = tf.keras.Sequential()
+
+  # adds convolutional layer to the model
   result.add(
     tf.keras.layers.Conv2DTranspose(filters, size, strides=2,
                                     padding='same',
                                     kernel_initializer=initializer,
                                     use_bias=False))
 
+  # adds batch normalization layer to the model
   result.add(tf.keras.layers.BatchNormalization())
 
+  # adds dropout layer to the model
   if apply_dropout:
       result.add(tf.keras.layers.Dropout(0.5))
 
+  # adds relu activation layer to the model
   result.add(tf.keras.layers.ReLU())
 
   return result
 
-# definition of generator
+
+
+
 def Generator(in_channels, patch_dim, out_channels):
+
+  """
+  Defines a U-Net-based generator model for image-to-image translation tasks.
+  This function constructs a neural network architecture with symmetrical 
+  downsampling and upsampling stacks, incorporating skip connections for 
+  preserving spatial information. The model takes an input tensor with 
+  `in_channels` and `patch_dim` dimensions and produces an output tensor 
+  with `out_channels`, using a series of convolutional layers for feature 
+  extraction and reconstruction.
+
+  Args:
+      in_channels (int): Number of channels in the input tensor.
+      patch_dim (tuple): Dimensions (height, width) of the input tensor.
+      out_channels (int): Number of channels in the output tensor.
+
+  Returns:
+      tf.keras.Model: A compiled generator model.
+  """
+
   inputs = tf.keras.layers.Input(shape=[patch_dim[0], patch_dim[1], in_channels])
 
   down_stack = [

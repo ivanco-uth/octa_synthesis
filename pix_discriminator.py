@@ -3,8 +3,26 @@ import os
 import tensorflow as tf
 from pix_generator import downsample
 
-# definition of discriminator model in pix2pix
+
 def Discriminator(in_channels, out_channels, patch_dim):
+
+  """
+  Defines the discriminator model for the Pix2Pix framework.
+
+  The discriminator evaluates the authenticity of generated images by 
+  distinguishing between real and fake pairs of input and target images. 
+  This function implements a PatchGAN-based discriminator, processing 
+  image patches instead of the entire image, to model high-frequency details.
+
+  Args:
+      in_channels (int): Number of input channels (e.g., RGB or grayscale).
+      out_channels (int): Number of target output channels.
+      patch_dim (tuple): Spatial dimensions of the input patch (height, width).
+
+  Returns:
+      tf.keras.Model: A Keras model representing the discriminator.
+  """
+
   
   # kernel initializer definition
   initializer = tf.random_normal_initializer(0., 0.02)
@@ -35,8 +53,10 @@ def Discriminator(in_channels, out_channels, patch_dim):
   # leaky rely activation
   leaky_relu = tf.keras.layers.LeakyReLU()(batchnorm1)
 
+  # zero pad before final convolutional layers
   zero_pad2 = tf.keras.layers.ZeroPadding2D()(leaky_relu)  # (bs, 33, 33, 512)
 
+  # final convolutional layer
   last = tf.keras.layers.Conv2D(1, 4, strides=1,
                                 kernel_initializer=initializer)(zero_pad2)  # (bs, 30, 30, 1)
 

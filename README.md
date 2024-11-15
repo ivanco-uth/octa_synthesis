@@ -60,7 +60,7 @@ Organize your data folder with fundus and OCTA images in a structure compatible 
 Run the training script as follows:
 
 ```bash
-python pix_pix_train.py --case_range <range> --gpu_id <gpu_id>
+python pix_pix_train.py
 ```
 
 Arguments:
@@ -82,25 +82,17 @@ python pix_pix_train.py
 
 The generator uses a U-Net architecture, comprising encoding and decoding layers with skip connections for spatial feature retention. It outputs the translated OCTA image.
 
-```python
-def Generator(in_channels, patch_dim, out_channels):
-    # Define model layers and forward pass
-```
 
 #### Discriminator
 
 The PatchGAN discriminator evaluates the quality of generated images by examining patches, ensuring local-level consistency.
 
-```python
-def Discriminator(in_channels, out_channels, patch_dim):
-    # Define model layers and forward pass
-```
 
 ---
 
 ## Evaluation and Results
 
-After training, sample results and metrics are saved in the `logs/` directory. Visualization of training progression and evaluation metrics (such as MSE and SSIM) can be accessed via TensorBoard.
+During training, sample images and metrics are saved in the `logs/` directory. Visualization of training progression and evaluation metrics can be accessed via TensorBoard.
 
 ---
 

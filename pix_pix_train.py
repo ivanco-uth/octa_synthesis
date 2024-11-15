@@ -27,6 +27,8 @@ from pix_discriminator import Discriminator
 from IPython import display
 from skimage.io import imread, imsave
 
+
+# Set ID of GPU to be used
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 gpus = tf.config.experimental.list_physical_devices('GPU')
 
@@ -36,58 +38,131 @@ tf.config.experimental.set_memory_growth(gpus[0] , True)
 import datetime
 log_dir="logs/"
 
+# Assigns the current date and time to the folder containing the training logs
 summary_writer = tf.summary.create_file_writer(
   log_dir + "fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
 
-
+# Loss function for the generator, combines GAN loss with L1 loss
+# GAN loss is the loss for the discriminator when the generator produces fake images
 def generator_loss(disc_generated_output, gen_output, target, loss_object, LAMBDA):
-  gan_loss = loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
-  # mean absolute error
+  """
+    Computes the loss for the generator in the Pix2Pix framework.
+
+    This loss combines:
+    - GAN loss: Evaluates how well the generator fools the discriminator.
+    - L1 loss: Measures pixel-wise similarity between the generated and target images.
+
+    Args:
+        disc_generated_output (tf.Tensor): Discriminator's output for generated images.
+        gen_output (tf.Tensor): Generated images from the generator.
+        target (tf.Tensor): Ground-truth target images.
+        loss_object (tf.keras.losses): Loss function for computing GAN loss (e.g., BinaryCrossentropy).
+        LAMBDA (float): Weighting factor for L1 loss.
+
+    Returns:
+        tuple: Total generator loss, GAN loss, and L1 loss.
+  """
+
+  # Loss for the discriminator when the generator produces fake images
+  gan_loss = loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
   target = tf.cast(target, dtype=tf.float32)
 
+  # L1 loss between the generated image and the target image
   l1_loss = tf.reduce_mean(tf.abs(target - gen_output))
 
+  # Total generator loss, combines GAN loss with L1 loss
   total_gen_loss = gan_loss + (LAMBDA * l1_loss)
 
   return total_gen_loss, gan_loss, l1_loss
 
 
+# Loss function for the discriminator, combines loss for real and generated images
 def discriminator_loss(disc_real_output, disc_generated_output, loss_object):
+
+  """
+    Computes the loss for the discriminator in the Pix2Pix framework.
+
+    The discriminator distinguishes real images from generated ones. This loss combines:
+    - Real loss: Penalizes the discriminator for not identifying real images correctly.
+    - Generated loss: Penalizes the discriminator for incorrectly classifying generated images.
+
+    Args:
+        disc_real_output (tf.Tensor): Discriminator's output for real images.
+        disc_generated_output (tf.Tensor): Discriminator's output for generated images.
+        loss_object (tf.keras.losses): Loss function for computing the discriminator loss.
+
+    Returns:
+        tf.Tensor: Total discriminator loss.
+  """
+
+  # Loss for the discriminator when the input is a real image
   real_loss = loss_object(tf.ones_like(disc_real_output), disc_real_output)
 
+  # Loss for the discriminator when the input is a generated image
   generated_loss = loss_object(tf.zeros_like(disc_generated_output), disc_generated_output)
 
+  # Total discriminator loss, combines loss for real and generated images
   total_disc_loss = real_loss + generated_loss
 
   return total_disc_loss
 
 
 
-
+# Training step for the generator and discriminator
 @tf.function
 def train_step(input_image, target, epoch, generator, discriminator, generator_opt, discriminator_opt, loss_object, LAMBDA):
+  
+
+  """
+    Performs a single training step for the generator and discriminator.
+
+    This function:
+    - Computes generator and discriminator losses.
+    - Calculates gradients and applies them to update the model weights.
+    - Logs training metrics to TensorBoard.
+
+    Args:
+        input_image (tf.Tensor): Input images to the generator.
+        target (tf.Tensor): Ground-truth target images.
+        epoch (int): Current training epoch.
+        generator (tf.keras.Model): Generator model.
+        discriminator (tf.keras.Model): Discriminator model.
+        generator_opt (tf.keras.optimizers): Optimizer for the generator.
+        discriminator_opt (tf.keras.optimizers): Optimizer for the discriminator.
+        loss_object (tf.keras.losses): Loss function for computing GAN loss.
+        LAMBDA (float): Weighting factor for L1 loss.
+    """
+
+  # Gradient tape records operations for automatic differentiation
   with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+    # Generate fake image
     gen_output = generator(input_image, training=True)
 
+    # Get discriminator output for real and generated images
     disc_real_output = discriminator([input_image, target], training=True)
     disc_generated_output = discriminator([input_image, gen_output], training=True)
 
+    # Calculate losses, generator loss combines GAN loss with L1 loss
+    # Discriminator loss combines loss for real and generated images
     gen_total_loss, gen_gan_loss, gen_l1_loss = generator_loss(disc_generated_output, gen_output, target, loss_object, LAMBDA)
     disc_loss = discriminator_loss(disc_real_output, disc_generated_output, loss_object)
 
+  # Calculate gradients for generator and discriminator
   generator_gradients = gen_tape.gradient(gen_total_loss,
                                           generator.trainable_variables)
   discriminator_gradients = disc_tape.gradient(disc_loss,
                                                discriminator.trainable_variables)
 
+  # Apply gradients to generator and discriminator, updating weights
   generator_opt.apply_gradients(zip(generator_gradients,
                                           generator.trainable_variables))
   discriminator_opt.apply_gradients(zip(discriminator_gradients,
                                               discriminator.trainable_variables))
 
+  # Write training logs to TensorBoard
   with summary_writer.as_default():
     tf.summary.scalar('gen_total_loss', gen_total_loss, step=epoch)
     tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=epoch)
@@ -95,6 +170,7 @@ def train_step(input_image, target, epoch, generator, discriminator, generator_o
     tf.summary.scalar('disc_loss', disc_loss, step=epoch)
 
 
+# Function to generate images for display during training
 def generate_images(model, test_input, tar):
   prediction = model(test_input, training=True)
 
@@ -112,40 +188,66 @@ def generate_images(model, test_input, tar):
   plt.show()
 
 
+
 def evaluate_whole_fundus(model, image_case, data_fold, patch_size, batch_size, epoch):
 
+  """
+    Evaluates the model on a whole fundus image.
+
+    This function:
+    - Reads a fundus image from the dataset.
+    - Prepares the image for prediction by padding and normalization.
+    - Breaks the image into patches and processes them using the model.
+    - Reconstructs the full fundus image from the patches and logs it to TensorBoard.
+
+    Args:
+        model (tf.keras.Model): Generator model used for prediction.
+        image_case (str): Identifier for the test image.
+        data_fold (str): Path to the dataset directory.
+        patch_size (tuple): Dimensions of the patches.
+        batch_size (int): Number of patches to process in each batch.
+        epoch (int): Current training epoch.
+
+    Returns:
+        None
+    """
+
+  # modify to adjust to zenodo dataset formatting
   fundus_sample_x = imread("data/nasa_data/sub-00000{0}/ses-01/fundus/OS.jpg".format(image_case))
 
   shape_fundus_x, shape_fundus_y = fundus_sample_x.shape[0], fundus_sample_x.shape[1]
 
+  # padding to make the image divisible by the patch size
   pad_init_x, pad_init_y = fundus_sample_x.shape[0]//4, fundus_sample_x.shape[1]//4
 
   # fundus_sample_x = np.pad(fundus_sample_x, pad_width= ((413 , 413), (413 , 413), (0, 0)), constant_values = 0)
 
+  # pads the image to be divisible by the patch size
   fundus_sample_x = np.pad(fundus_sample_x, pad_width= ((pad_init_x, pad_init_x), (pad_init_y, pad_init_y), (0, 0)), constant_values = 0)
       
+  # applies rotation transformation to the image
   fundus_sample_x = rotate(fundus_sample_x, angle=0, resize=False, preserve_range=True)
 
+  # normalizes the image to be fed into the model by setting the pixel values between 0 and 1
   fundus_sample_x = fundus_sample_x/255
 
+  # then the intensity values are set between -1 and 1
   fundus_sample_x = (fundus_sample_x / 0.5) - 1
 
   
-
+  # breaks the fundus image into patches
   patch_dataset, num_patches = break_img_to_patches(img_input=fundus_sample_x,
        patch_size=patch_size, return_dataset=True, stride=2)
 
-  print("Number of patches: {0}".format(num_patches))
-
-  print(patch_dataset)
-
+  # loads the patches into the dataset
   patch_dataset = patch_dataset.map(lambda img: load_image_train_single(img),
                                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
-  # print(patch_dataset)
+  
+  # batches the dataset
   patch_dataset = patch_dataset.batch(batch_size=batch_size)
 
-  print(patch_dataset)
 
+  # uncomment to load the model from a checkpoint
   # ckpt = tf.train.Checkpoint(generator=generator, generator_optimizer=generator_optimizer)
   # ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
 
@@ -164,15 +266,19 @@ def evaluate_whole_fundus(model, image_case, data_fold, patch_size, batch_size, 
             patch_array[actual_idx, :, :, :] = pred_patch[i]
 
 
+  # Recreate the whole fundus image from the patches
   rec_img = put_img_back_from_patches(patches=patch_array , out_img_resolution=fundus_sample_x.shape, stride=2)
 
+  # Crops the image to the original size
   rec_img = rec_img[pad_init_x:pad_init_x+shape_fundus_x, pad_init_y:pad_init_y+shape_fundus_y]
 
+  # Normalizes the image to be displayed
   rec_img = rec_img * 0.5 + 0.5
 
-
+  # adjusts the shape of the image to be displayed
   rec_img = np.expand_dims(rec_img, axis=0)
 
+  # writes the image to tensorboard
   with summary_writer.as_default():
     tf.summary.image('Whole Fundus', rec_img, step=epoch)
 
@@ -181,6 +287,27 @@ def evaluate_whole_fundus(model, image_case, data_fold, patch_size, batch_size, 
 
 # @tf.function
 def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_size, epoch):
+
+  """
+    Generates and evaluates fundus-OCT image pairs using the generator model.
+
+    This function:
+    - Loads fundus and OCT images from the dataset.
+    - Breaks them into patches for prediction.
+    - Uses the generator model to predict OCT patches from fundus patches.
+    - Reconstructs the OCT image from the patches and logs it to TensorBoard.
+
+    Args:
+        model (tf.keras.Model): Generator model used for prediction.
+        image_case (str): Identifier for the test image.
+        data_fold (str): Path to the dataset directory.
+        patch_size (tuple): Dimensions of the patches.
+        batch_size (int): Number of patches to process in each batch.
+        epoch (int): Current training epoch.
+
+    Returns:
+        None
+    """
 
   print("Generating Image")
   eye_list = ["OS", "OD"]
