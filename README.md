@@ -69,22 +69,11 @@ Arguments:
 
 ### 3. Track metrics and visual outputs
 
-After training, modify `pix_pix_train.py` to use the `test_set` and execute:
+Use Tensorboard to access metrics and outputs
 
 ```bash
-python pix_pix_train.py
+tensorboard --logdir=logs/ --port='port_id'
 ```
-
-### Model Details
-
-#### Generator
-
-The generator uses a U-Net architecture, comprising encoding and decoding layers with skip connections for spatial feature retention. It outputs the translated OCTA image.
-
-
-#### Discriminator
-
-The PatchGAN discriminator evaluates the quality of generated images by examining patches, ensuring local-level consistency.
 
 
 ---
