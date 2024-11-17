@@ -21,7 +21,8 @@ from skimage.filters import sobel
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from tensorflow.python.ops.gen_batch_ops import batch
-from dataset_load_mod import load_data_cases, load_image_train, break_img_to_patches, put_img_back_from_patches, load_image_train_single
+from dataset_load_mod import load_data_cases, load_image_train, preprocess_sample
+from dataset_load_mod import break_img_to_patches, put_img_back_from_patches, load_image_train_single
 from pix_generator import Generator
 from pix_discriminator import Discriminator
 from IPython import display
@@ -213,7 +214,11 @@ def evaluate_whole_fundus(model, image_case, data_fold, patch_size, batch_size, 
     """
 
   # modify to adjust to zenodo dataset formatting
-  fundus_sample_x = imread("data/nasa_data/sub-00000{0}/ses-01/fundus/OS.jpg".format(image_case))
+  # fundus_sample_x = imread("data/nasa_data/sub-00000{0}/ses-01/fundus/OS.jpg".format(image_case))
+
+  data_fold = data_fold.split("/")[0]
+
+  fundus_sample_x = imread("{0}/fov_45/fundus/{1}_{2}.jpg".format(data_fold, image_case, 'OS'))
 
   shape_fundus_x, shape_fundus_y = fundus_sample_x.shape[0], fundus_sample_x.shape[1]
 
@@ -286,7 +291,8 @@ def evaluate_whole_fundus(model, image_case, data_fold, patch_size, batch_size, 
 
 
 # @tf.function
-def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_size, epoch):
+def generate_fundus_oct_pair(model, image_case, data_fold, patch_size,
+                              batch_size, epoch, oct_channels):
 
   """
     Generates and evaluates fundus-OCT image pairs using the generator model.
@@ -311,11 +317,16 @@ def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_siz
 
   print("Generating Image")
   eye_list = ["OS", "OD"]
-  fundus_img_path = "{0}/sub-00000{1}/{2}/{3}".format(data_fold, image_case, "OS", "fundus_disc.npy")
-  oct_img_path = "{0}/sub-00000{1}/{2}/{3}".format(data_fold, image_case, "OS", "oct_disc.npy")
 
-  disc_sample_x = np.load(file=fundus_img_path)
-  disc_sample_y = np.load(file=oct_img_path)
+  fundus_img_path = "{0}/fundus/disc/{1}_{2}.png".format(data_fold, image_case, eye_list[0]) 
+  oct_img_path = "{0}/octa/disc/{1}_{2}.png".format(data_fold, image_case, eye_list[0])
+  
+
+  disc_sample_x = io.imread(fundus_img_path)
+  disc_sample_y = io.imread(oct_img_path)
+
+  disc_sample_x, disc_sample_y = preprocess_sample(disc_sample_x, disc_sample_y)
+
 
   shape_fundus_x, shape_fundus_y = disc_sample_x.shape[0], disc_sample_x.shape[1]
 
@@ -330,18 +341,16 @@ def generate_fundus_oct_pair(model, image_case, data_fold, patch_size, batch_siz
   patch_dataset = patch_dataset.batch(batch_size=batch_size)
 
   
-
-  cnt = 0 
-
-  
-  patch_predicts = np.zeros((num_patches, patch_size[0], patch_size[1], disc_sample_y.shape[-1]))
+  patch_predicts = np.zeros((num_patches, patch_size[0], patch_size[1], oct_channels))
 
   print("Total patches: {0}".format(num_patches))
 
   for idx, (patch_fundus, patch_oct) in enumerate(patch_dataset):
     patch_prediction = model(patch_fundus, training=True)
+
+    print('Shape of patch prediction: {0}'.format(patch_prediction.shape))
     for i in range(patch_prediction.shape[0]):  # Loop over batch size
-        patch_predicts[idx * batch_size + i, :, :, :] = patch_prediction[i].numpy()
+        patch_predicts[idx * batch_size + i, :, :] = patch_prediction[i].numpy()
 
   print(patch_predicts.shape)
 
@@ -374,13 +383,14 @@ def main():
 
     train_chk = True
     eye_list = ["OS", "OD"]
-    # data_fold = "data/formatted_nasa_fundus_oct"
-    data_fold = "data/aligns_fold"
+    regions_list = ["disc", "macula"]
+    data_fold = "UT-FSOCTA-v1/cropped/"
     
-    patch_dim = (512, 512)
+    patch_dim = (256, 256)
     random_state_patches, num_patches = 15, 10
     fundus_channels, oct_channels = 3, 4
     batch_size = 32
+
 
     train_set = list(range(1, 30)) 
     test_set = list(range(31, 33))
@@ -394,20 +404,11 @@ def main():
 
     if train_chk == True:
       
-      train_disc_x, train_disc_y, train_macula_x, train_macula_y = load_data_cases(data_fold = data_fold, list_cases= train_set, eye_list= eye_list, patch_dim= patch_dim, random_state_patches = random_state_patches
-  , num_patches = num_patches, fundus_channels = fundus_channels, oct_channels = oct_channels)
+      train_data_x, train_data_y = load_data_cases(data_fold = data_fold, list_cases= train_set, eye_list= eye_list, regions_list=regions_list,
+         patch_dim= patch_dim, random_state_patches = random_state_patches, num_patches = num_patches, fundus_channels = fundus_channels, oct_channels = oct_channels)
 
-      test_disc_x, test_disc_y, test_macula_x, test_macula_y = load_data_cases(data_fold = data_fold, list_cases= test_set, eye_list= eye_list, patch_dim= patch_dim, random_state_patches = random_state_patches
-  , num_patches = num_patches, fundus_channels = fundus_channels, oct_channels = oct_channels)
-
-
-      print(train_disc_x.shape)
-      print(train_disc_y.shape)
-      print(train_macula_x.shape)
-      print(train_macula_y.shape)
-
-      train_data_x = np.concatenate((train_disc_x, train_macula_x), axis=0)
-      train_data_y = np.concatenate((train_disc_y, train_macula_y), axis=0)
+      test_data_x, test_data_y = load_data_cases(data_fold = data_fold, list_cases= test_set, eye_list= eye_list, regions_list=regions_list,
+          patch_dim= patch_dim, random_state_patches = random_state_patches, num_patches = num_patches, fundus_channels = fundus_channels, oct_channels = oct_channels)
 
 
       train_dataset = tf.data.Dataset.from_tensor_slices((train_data_x, train_data_y))
@@ -416,11 +417,11 @@ def main():
 
       train_dataset = train_dataset.batch(batch_size=batch_size)
 
-      test_dataset = tf.data.Dataset.from_tensor_slices((test_disc_x, test_disc_y))
+      test_dataset = tf.data.Dataset.from_tensor_slices((test_data_x, test_data_y))
       test_dataset = test_dataset.map(lambda img, target: load_image_train(img, target),
                                       num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-      test_dataset = test_dataset.shuffle(buffer_size=test_disc_x.shape[0]*2, seed=2)
+      test_dataset = test_dataset.shuffle(buffer_size=test_data_x.shape[0]*2, seed=2)
       test_dataset = test_dataset.batch(batch_size=batch_size)
 
 
@@ -455,7 +456,8 @@ def main():
         display.clear_output(wait=True)
 
         generate_fundus_oct_pair(model=generator, image_case= img_case, 
-        data_fold = data_fold, patch_size=patch_dim, batch_size=batch_size, epoch=epoch)
+        data_fold = data_fold, patch_size=patch_dim, batch_size=batch_size
+        , epoch=epoch, oct_channels=oct_channels)
 
         if (epoch + 1) % 10 == 0:
           evaluate_whole_fundus(model=generator, image_case = img_case, data_fold=data_fold, patch_size=patch_dim, batch_size=batch_size, epoch=epoch)
@@ -496,6 +498,10 @@ def main():
 
       fundus_img_path = "{0}/sub-00000{1}/{2}/{3}".format(data_fold, image_case, "OS", "fundus_disc.npy")
       oct_img_path = "{0}/sub-00000{1}/{2}/{3}".format(data_fold, image_case, "OS", "oct_disc.npy")
+
+
+      fundus_img_path = "{0}/fundus/disc/{1}_{2}.png".format(data_fold, image_case, "OS") 
+      oct_img_path = "{0}/octa/disc/{1}_{2}.png".format(data_fold, image_case, "OS")
 
 
       checkpoint_dir = './training_checkpoints'

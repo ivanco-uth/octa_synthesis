@@ -17,15 +17,11 @@ from sklearn.feature_extraction.image import extract_patches_2d
 # from scipy.ndimage import rotate 
 from skimage.segmentation import watershed, random_walker
 from skimage.filters import sobel
-from skimage.color import rgb2gray
+from skimage.color import rgb2gray, rgba2rgb
 from skimage.filters import threshold_otsu
 from math import ceil, floor
 from skimage.io import imread
 from tensorflow.python.ops.gen_batch_ops import batch
-
-fundus_disc, fundus_macula = "fundus_disc", "fundus_macula"
-oct_disc, oct_macula = "oct_disc", "oct_macula"
-
 
 def back_forth_patches(img_input, img_label=None, patch_size=None, stride=1, mode=None, global_step=0, batch_size=32, img_state=None, pred_img_patch=None):
 
@@ -277,10 +273,9 @@ def break_img_to_patches(img_input, img_label=None, patch_size=None, return_data
     img_res_x, img_res_y = img_input.shape[0], img_input.shape[1]
     # steps_x, steps_y =  ceil(stride *img_res_x/(patch_dim_x)),  ceil(stride *img_res_y/(patch_dim_y))
 
+
     steps_x = ceil(stride * (img_res_x - patch_dim_x)/(patch_dim_x)) + 1
     steps_y = ceil(stride * (img_res_y - patch_dim_y)/(patch_dim_y)) + 1
-
-    # print(steps_x, steps_y)
     
     patch_num = steps_x * steps_y
 
@@ -288,7 +283,7 @@ def break_img_to_patches(img_input, img_label=None, patch_size=None, return_data
     patch_y_arr = None
 
     if img_label is not None:
-        patch_y_arr = np.zeros((patch_num, patch_dim_x, patch_dim_y, img_label.shape[-1]))
+        patch_y_arr = np.zeros((patch_num, patch_dim_x, patch_dim_y, img_label.shape[-1]), dtype=np.float32)
 
 
     # print("Shape Input: {0}".format(img_input.shape))
@@ -346,7 +341,7 @@ def break_img_to_patches(img_input, img_label=None, patch_size=None, return_data
             img_x_patch = img_input[x_init:x_end, img_res_y - patch_dim_y:img_res_y]
             
             if img_label is not None:
-                img_y_patch = img_label[x_init:x_end, img_res_y - patch_dim_y : img_res_y ]
+                img_y_patch = img_label[x_init:x_end, img_res_y - patch_dim_y : img_res_y]
 
         else:
             # print(x_init, x_end)
@@ -367,10 +362,6 @@ def break_img_to_patches(img_input, img_label=None, patch_size=None, return_data
         # plt.imshow(img_y_patch)
         # plt.show()
 
-        # print(img_input.shape)
-        # print(img_x_patch.shape)
-        # print(img_y_patch.shape)
-        # print(patch_x_arr.shape)
         patch_x_arr[step, :, :, :] = img_x_patch
 
         if img_label is not None:
@@ -685,134 +676,128 @@ def load_image_train_single(input_image):
 
   return input_image
 
+
+def get_unique_filenames_in_folder(folder):
+    """
+    Iterates through a given folder and its subfolders,
+    and retrieves the unique names of all files (not folders),
+    excluding hidden/system files.
+    
+    Args:
+        folder (str): Path to the folder.
+    
+    Returns:
+        set: A set containing the unique file names in the folder.
+    """
+    unique_filenames = set()
+    
+    # Walk through the directory structure
+    for root, _, files in os.walk(folder):
+        for file in files:
+            # Exclude hidden/system files (e.g., .DS_Store)
+            if not file.startswith('.'):
+                unique_filenames.add(file)
+    
+    return unique_filenames
+
+
+def preprocess_sample(sample_fundus, sample_octa):
+    """
+    Preprocess fundus and OCTA samples:
+    - Normalize fundus to the range [-1, 1].
+    - Convert OCTA to grayscale and normalize to the range [-1, 1].
+    
+    Args:
+        sample_fundus (numpy.ndarray): Fundus image array.
+        sample_octa (numpy.ndarray): OCTA image array.
+    
+    Returns:
+        tuple: Preprocessed (sample_fundus, sample_octa).
+    """
+    # Normalize fundus image to range [-1, 1]
+    sample_fundus = (sample_fundus / 255.0) * 2.0 - 1.0
+
+    # # Check if OCTA is RGBA, and convert to RGB if needed
+    # if sample_octa.shape[-1] == 4:  # If 4 channels (RGBA)
+    #     sample_octa = rgba2rgb(sample_octa)
+
+    # # Convert OCTA to grayscale (if it has multiple channels)
+    # if len(sample_octa.shape) == 3 and sample_octa.shape[-1] > 1:
+    #     sample_octa = rgb2gray(sample_octa)
+
+    # Normalize grayscale OCTA to range [-1, 1]
+    sample_octa = (sample_octa / 255.0) * 2.0 - 1.0
+
+    return sample_fundus, sample_octa
+
+
+
 # @tf.function
-def load_data_cases(data_fold = "", list_cases=[], eye_list= ["OS", "OD"], patch_dim= (128, 128), random_state_patches = 0
+def load_data_cases(data_fold = "", list_cases=[], eye_list= ["OS", "OD"], regions_list=['macula', 'disc'], patch_dim= (128, 128), random_state_patches = 0
 , num_patches = 15, fundus_channels = 3, oct_channels = 4):
 
-    disc_array_x, disc_array_y = np.zeros((num_patches, patch_dim[0], patch_dim[1], fundus_channels)), np.zeros((1, patch_dim[0], patch_dim[1], fundus_channels))
-    macula_array_x , macula_array_y = np.zeros((num_patches, patch_dim[0], patch_dim[1], oct_channels)), np.zeros((1, patch_dim[0], patch_dim[1], oct_channels))
 
-    img_set = os.listdir(data_fold)
+    fundus_data_fold = "{0}/{1}".format(data_fold, 'fundus')
+    octa_data_fold = "{0}/{1}".format(data_fold, 'octa')
 
-    disc_count, macula_count = 0, 0
+    fundus_list = get_unique_filenames_in_folder(fundus_data_fold)
 
-    for img_id in img_set:
+    sample_count = 0
 
-        if "sub-" not in img_id:
-            continue
+    array_fundus, array_octa = None, None
 
-        img_number = int(img_id.split("-")[-1].lstrip("0"))
 
+    print(fundus_list)
+
+    for img_id in fundus_list:
+
+        img_number = int(img_id.split("_")[0])
+
+        # This checks that the id number is within 
+        # the training, validation or test set it belongs to
         if img_number not in list_cases:
             continue
 
-        # if img_id == "sub-000005" or img_id == "sub-0000013":
-        #     continue
+        for eye_region in regions_list:
 
-        try:
+            try:
 
-            img_path = "{0}/{1}".format(data_fold, img_id)
-            print(img_path)
-            eye_dirs = os.listdir(img_path)
-            
-            for eye_id in eye_dirs:
-                eye_path = "{0}/{1}/{2}".format(data_fold, img_id, eye_id)
-                
-                if eye_id not in eye_list:
-                    try:
-                        rmtree(eye_path)
-                    except:
-                        os.remove(eye_path)
+                eye_path_fundus = "{0}/{1}/{2}".format(fundus_data_fold, eye_region, img_id)
+                eye_path_octa = "{0}/{1}/{2}".format(octa_data_fold, eye_region, img_id)
+
+                sample_fundus = io.imread(eye_path_fundus)
+                sample_octa = io.imread(eye_path_octa)
+
+                sample_fundus, sample_octa = preprocess_sample(sample_fundus, sample_octa)
+
+
+                if sample_fundus.shape[0] < patch_dim[0] or sample_fundus.shape[1] < patch_dim[1]:
+                    continue
+
+                fundus_disc_patch, octa_disc_patch = break_img_to_patches(img_input=sample_fundus, img_label=sample_octa
+                , patch_size=patch_dim, return_dataset=False, stride=1)
+
+                print(fundus_disc_patch.shape)
+                print(octa_disc_patch.shape)
+
+                if sample_count == 0:
+                    sample_count = 1
+                    
+                    array_fundus = fundus_disc_patch
+                    array_octa = octa_disc_patch
+
 
                 else:
-                    file_list = os.listdir(eye_path)
-
-                    for file in file_list:
-                        file_path = "{0}/{1}"
-
-                        if fundus_disc in file:
-
-                            disc_sample_x = np.load(file_path.format(eye_path, file))
-                            disc_sample_y = np.load(file_path.format(eye_path, oct_disc + ".npy"))
-
-                            # disc_sample_x = resize(disc_sample_x, patch_dim) 
-                            # disc_sample_y = resize(disc_sample_y, patch_dim)
-
-                            # print(disc_sample_x.shape)
-                            # print(disc_sample_y.shape)
-
-                            # fundus_disc_patch = extract_patches_2d(disc_sample_x, patch_size = patch_dim
-                            # , random_state = random_state_patches, max_patches = num_patches)
-
-                            if disc_sample_x.shape[0] < patch_dim[0] or disc_sample_x.shape[1] < patch_dim[1]:
-                                continue
-
-                            fundus_disc_patch, oct_disc_patch = break_img_to_patches(img_input=disc_sample_x, img_label=disc_sample_y
-                            , patch_size=patch_dim, return_dataset=False, stride=1)
-
-                            # oct_disc_patch = extract_patches_2d(disc_sample_y, patch_size = patch_dim
-                            # , random_state = random_state_patches, max_patches = num_patches)
-
-                            # print(fundus_disc_patch.shape)
+                    
+                    array_fundus = np.concatenate((array_fundus, fundus_disc_patch))
+                    array_octa = np.concatenate((array_octa, octa_disc_patch))
 
 
-                            if disc_count == 0:
-                                disc_count = 1
-                                
-                                disc_array_x = fundus_disc_patch
-                                disc_array_y = oct_disc_patch
+            except Exception as e:
+                continue
+            
 
-
-                            else:
-
-                                print(fundus_disc_patch.shape)
-                                print(oct_disc_patch.shape)
-                                
-                                disc_array_x = np.concatenate((disc_array_x, fundus_disc_patch))
-                                disc_array_y = np.concatenate((disc_array_y, oct_disc_patch))
-
-
-                        if fundus_macula in file :
-                            
-                            macula_sample_x = np.load(file_path.format(eye_path, file))
-                            macula_sample_y = np.load(file_path.format(eye_path, oct_macula + ".npy"))
-
-                            # print(macula_sample_x.shape)
-                            # print(macula_sample_y.shape)
-
-                            # fundus_macula_patch = extract_patches_2d(macula_sample_x, patch_size = patch_dim
-                            # , random_state = random_state_patches, max_patches = num_patches)
-                            # oct_macula_patch = extract_patches_2d(macula_sample_y, patch_size = patch_dim
-                            # , random_state = random_state_patches, max_patches = num_patches)
-
-                            if macula_sample_x.shape[0] < patch_dim[0] or macula_sample_x.shape[1] < patch_dim[1]:
-                                continue
-
-
-                            fundus_macula_patch, oct_macula_patch = break_img_to_patches(img_input=macula_sample_x, img_label=macula_sample_y
-                            , patch_size=patch_dim, return_dataset=False, stride=1)
-
-
-                            if macula_count == 0:
-                                macula_count = 1
-
-                                macula_array_x = fundus_macula_patch
-                                macula_array_y = oct_macula_patch
-
-
-                            elif fundus_macula in file:
-                                
-                                macula_array_x = np.concatenate((macula_array_x, fundus_macula_patch))
-                                macula_array_y = np.concatenate((macula_array_y, oct_macula_patch))
-
-        except Exception as e:
-            print(e)
-            # break
-            # continue
-
-    
-
-    return disc_array_x, disc_array_y, macula_array_x, macula_array_y
+    return array_fundus, array_octa
 
 
 
@@ -830,24 +815,6 @@ def main():
     print(img_out.shape)
     plt.imshow(img_out.astype(int))
     plt.show()
-
-
-
-    
-
-    # print(np.unique(fundus_patch_array, return_counts=True))
-
-    # sys.exit()
-
-    print(fundus_patch_array.shape)
-    # for idx in range(fundus_patch_array.shape[0]):
-        
-    #     img_patch = fundus_patch_array[idx, 0, ...]
-    #     plt.figure()
-    #     plt.imshow(img_patch)
-    
-    # plt.show()
-
 
 
 if __name__ == '__main__':
