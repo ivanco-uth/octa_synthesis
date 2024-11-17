@@ -30,7 +30,6 @@ pix_generator.py           # Generator network definition
 pix_discriminator.py       # Discriminator network definition
 pix_pix_train.py           # Main training script for pix2pix GAN
 dataset_load_mod.py        # Data loading and patch processing
-data_slice.py              # Utility for patch operations and image reconstruction
 ```
 
 ---
@@ -51,9 +50,9 @@ pip install -r requirements.txt
 
 ## Usage
 
-### 1. Prepare the Dataset
+### 1. Download data from Zenodo
 
-Organize your data folder with fundus and OCTA images in a structure compatible with `dataset_load_mod.py`.
+The project data can be accessed at: https://zenodo.org/records/6476639
 
 ### 2. Train the Model
 
@@ -68,7 +67,7 @@ Arguments:
 - `--case_range`: Specifies the range of test cases.
 - `--gpu_id`: Specifies the GPU for running the script.
 
-### 3. Generate Synthetic OCTA Images
+### 3. Track metrics and visual outputs
 
 After training, modify `pix_pix_train.py` to use the `test_set` and execute:
 
