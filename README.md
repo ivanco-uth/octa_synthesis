@@ -40,11 +40,6 @@ dataset_load_mod.py        # Data loading and patch processing
 - TensorFlow 2.x
 - NumPy, Scikit-Image, Matplotlib, Pandas, SciPy
 
-Install the required libraries:
-
-```bash
-pip install -r requirements.txt
-```
 
 ---
 
