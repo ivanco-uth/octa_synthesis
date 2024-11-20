@@ -50,11 +50,39 @@ pip install -r requirements.txt
 
 ## Usage
 
-### 1. Download data from Zenodo
+### 1. Clone repository
+```bash
+git clone https://github.com/ivanco-uth/octa_synthesis.git
+```
+
+### 2. Download data from Zenodo into project folder
 
 The project data can be accessed at: https://zenodo.org/records/6476639
 
-### 2. Train the Model
+
+### 3. Create & activate environment
+
+```bash
+conda create -n new_env python=3.7 -y
+```
+
+``` bash
+conda activate new_env
+```
+
+### 4. Install requirements
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Install conda libraries
+
+```bash
+conda install -c conda-forge cudatoolkit=11.0 cudnn=8.0.5
+```
+
+### 6. Train model
 
 Run the training script as follows:
 
@@ -62,12 +90,8 @@ Run the training script as follows:
 python pix_pix_train.py
 ```
 
-Arguments:
 
-- `--case_range`: Specifies the range of test cases.
-- `--gpu_id`: Specifies the GPU for running the script.
-
-### 3. Track metrics and visual outputs
+### 7. Track metrics and visual outputs
 
 Use Tensorboard to access metrics and outputs
 
